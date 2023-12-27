@@ -1,12 +1,8 @@
 #include "thread-safe-callback.h"
 
-#ifdef LEGACY_NAPI_THREAD_SAFE_CALLBACK
+#include <stdexcept>
 
-// Nothing to do
-
-#else
-
-const char* ThreadSafeCallback::CancelException::what() const throw()
+const char *ThreadSafeCallback::CancelException::what() const throw()
 {
     return "ThreadSafeCallback cancelled";
 }
@@ -45,7 +41,8 @@ void ThreadSafeCallback::callbackFunc(Napi::Env env,
                                       Napi::Reference<Napi::Value> *context,
                                       CallbackData *data)
 {
-    if (!data)
+    // if env is gone this could mean cb fn has changed. See issue#176
+    if (!data || !env)
         return;
 
     arg_vector_t args;
@@ -64,6 +61,3 @@ void ThreadSafeCallback::callbackFunc(Napi::Env env,
     if (env && callback)
         callback.Call(context->Value(), args);
 }
-
-#endif
-

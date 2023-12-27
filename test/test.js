@@ -1,5 +1,5 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const nodeDataChannel = require('../lib/index');
+import { jest } from '@jest/globals';
+import * as nodeDataChannel from '../lib';
 
 describe('Module Definition', () => {
     test('Module Defined', () => {

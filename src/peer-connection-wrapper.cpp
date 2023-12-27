@@ -4,6 +4,8 @@
 #include "media-video-wrapper.h"
 #include "media-audio-wrapper.h"
 
+#include "plog/Log.h"
+
 #include <cctype>
 #include <sstream>
 
@@ -12,6 +14,7 @@ std::unordered_set<PeerConnectionWrapper *> PeerConnectionWrapper::instances;
 
 void PeerConnectionWrapper::CloseAll()
 {
+    PLOG_DEBUG << "CloseAll() called";
     auto copy(instances);
     for (auto inst : copy)
         inst->doClose();
@@ -19,6 +22,7 @@ void PeerConnectionWrapper::CloseAll()
 
 void PeerConnectionWrapper::ResetCallbacksAll()
 {
+    PLOG_DEBUG << "ResetCallbacksAll() called";
     auto copy(instances);
     for (auto inst : copy)
         inst->doResetCallbacks();
@@ -37,16 +41,19 @@ Napi::Object PeerConnectionWrapper::Init(Napi::Env env, Napi::Object exports)
             InstanceMethod("setLocalDescription", &PeerConnectionWrapper::setLocalDescription),
             InstanceMethod("setRemoteDescription", &PeerConnectionWrapper::setRemoteDescription),
             InstanceMethod("localDescription", &PeerConnectionWrapper::localDescription),
+            InstanceMethod("remoteDescription", &PeerConnectionWrapper::remoteDescription),
             InstanceMethod("addRemoteCandidate", &PeerConnectionWrapper::addRemoteCandidate),
             InstanceMethod("createDataChannel", &PeerConnectionWrapper::createDataChannel),
             InstanceMethod("addTrack", &PeerConnectionWrapper::addTrack),
             InstanceMethod("hasMedia", &PeerConnectionWrapper::hasMedia),
             InstanceMethod("state", &PeerConnectionWrapper::state),
+            InstanceMethod("iceState", &PeerConnectionWrapper::iceState),
             InstanceMethod("signalingState", &PeerConnectionWrapper::signalingState),
             InstanceMethod("gatheringState", &PeerConnectionWrapper::gatheringState),
             InstanceMethod("onLocalDescription", &PeerConnectionWrapper::onLocalDescription),
             InstanceMethod("onLocalCandidate", &PeerConnectionWrapper::onLocalCandidate),
             InstanceMethod("onStateChange", &PeerConnectionWrapper::onStateChange),
+            InstanceMethod("onIceStateChange", &PeerConnectionWrapper::onIceStateChange),
             InstanceMethod("onSignalingStateChange", &PeerConnectionWrapper::onSignalingStateChange),
             InstanceMethod("onGatheringStateChange", &PeerConnectionWrapper::onGatheringStateChange),
             InstanceMethod("onDataChannel", &PeerConnectionWrapper::onDataChannel),
@@ -55,6 +62,8 @@ Napi::Object PeerConnectionWrapper::Init(Napi::Env env, Napi::Object exports)
             InstanceMethod("bytesReceived", &PeerConnectionWrapper::bytesReceived),
             InstanceMethod("rtt", &PeerConnectionWrapper::rtt),
             InstanceMethod("getSelectedCandidatePair", &PeerConnectionWrapper::getSelectedCandidatePair),
+            InstanceMethod("maxDataChannelId", &PeerConnectionWrapper::maxDataChannelId),
+            InstanceMethod("maxMessageSize", &PeerConnectionWrapper::maxMessageSize),
         });
 
     constructor = Napi::Persistent(func);
@@ -66,6 +75,7 @@ Napi::Object PeerConnectionWrapper::Init(Napi::Env env, Napi::Object exports)
 
 PeerConnectionWrapper::PeerConnectionWrapper(const Napi::CallbackInfo &info) : Napi::ObjectWrap<PeerConnectionWrapper>(info)
 {
+    PLOG_DEBUG << "Constructor called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -172,7 +182,7 @@ PeerConnectionWrapper::PeerConnectionWrapper(const Napi::CallbackInfo &info) : N
     }
 
     // bind address, libjuice only
-    if(config.Get("bindAddress").IsString())
+    if (config.Get("bindAddress").IsString())
         rtcConfig.bindAddress = config.Get("bindAddress").As<Napi::String>().ToString();
 
     // Port Ranges
@@ -228,6 +238,7 @@ PeerConnectionWrapper::PeerConnectionWrapper(const Napi::CallbackInfo &info) : N
     // Create peer-connection
     try
     {
+        PLOG_DEBUG << "Creating a new peer";
         mRtcPeerConnPtr = std::make_unique<rtc::PeerConnection>(rtcConfig);
     }
     catch (std::exception &ex)
@@ -241,13 +252,16 @@ PeerConnectionWrapper::PeerConnectionWrapper(const Napi::CallbackInfo &info) : N
 
 PeerConnectionWrapper::~PeerConnectionWrapper()
 {
+    PLOG_DEBUG << "Destructor called";
     doDestroy();
 }
 
 void PeerConnectionWrapper::doClose()
 {
+    PLOG_DEBUG << "doClose() called";
     if (mRtcPeerConnPtr)
     {
+        PLOG_DEBUG << "Closing...";
         try
         {
             mRtcPeerConnPtr->close();
@@ -263,17 +277,20 @@ void PeerConnectionWrapper::doClose()
 
 void PeerConnectionWrapper::close(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "close() called";
     doClose();
 }
 
 void PeerConnectionWrapper::doDestroy()
 {
+    PLOG_DEBUG << "doDestroy() called";
     doClose();
     doResetCallbacks();
 }
 
 void PeerConnectionWrapper::doResetCallbacks()
 {
+    PLOG_DEBUG << "doResetCallbacks() called";
     mOnLocalDescriptionCallback.reset();
     mOnLocalCandidateCallback.reset();
     mOnStateChangeCallback.reset();
@@ -287,11 +304,13 @@ void PeerConnectionWrapper::doResetCallbacks()
 
 void PeerConnectionWrapper::destroy(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "destroy() called";
     doDestroy();
 }
 
 void PeerConnectionWrapper::setLocalDescription(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "setLocalDescription() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -314,7 +333,7 @@ void PeerConnectionWrapper::setLocalDescription(const Napi::CallbackInfo &info)
         std::string typeStr = info[0].As<Napi::String>().ToString();
 
         // Accept uppercase first letter for backward compatibility
-        if(typeStr.size() > 0)
+        if (typeStr.size() > 0)
             typeStr[0] = std::tolower(typeStr[0]);
 
         if (typeStr == "answer")
@@ -332,6 +351,7 @@ void PeerConnectionWrapper::setLocalDescription(const Napi::CallbackInfo &info)
 
 void PeerConnectionWrapper::setRemoteDescription(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "setRemoteDescription() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -364,12 +384,32 @@ void PeerConnectionWrapper::setRemoteDescription(const Napi::CallbackInfo &info)
 
 Napi::Value PeerConnectionWrapper::localDescription(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "localDescription() called";
     Napi::Env env = info.Env();
 
     std::optional<rtc::Description> desc = mRtcPeerConnPtr ? mRtcPeerConnPtr->localDescription() : std::nullopt;
 
     // Return JS null if no description
-    if (!desc.has_value()) {
+    if (!desc.has_value())
+    {
+        return env.Null();
+    }
+
+    Napi::Object obj = Napi::Object::New(env);
+    obj.Set("type", desc->typeString());
+    obj.Set("sdp", desc.value());
+    return obj;
+}
+
+Napi::Value PeerConnectionWrapper::remoteDescription(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    std::optional<rtc::Description> desc = mRtcPeerConnPtr ? mRtcPeerConnPtr->remoteDescription() : std::nullopt;
+
+    // Return JS null if no description
+    if (!desc.has_value())
+    {
         return env.Null();
     }
 
@@ -381,6 +421,7 @@ Napi::Value PeerConnectionWrapper::localDescription(const Napi::CallbackInfo &in
 
 void PeerConnectionWrapper::addRemoteCandidate(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "addRemoteCandidate() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -411,6 +452,7 @@ void PeerConnectionWrapper::addRemoteCandidate(const Napi::CallbackInfo &info)
 
 Napi::Value PeerConnectionWrapper::createDataChannel(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "createDataChannel() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -569,6 +611,7 @@ Napi::Value PeerConnectionWrapper::createDataChannel(const Napi::CallbackInfo &i
         std::string label = info[0].As<Napi::String>().ToString();
         std::shared_ptr<rtc::DataChannel> dataChannel = mRtcPeerConnPtr->createDataChannel(label, std::move(init));
         auto instance = DataChannelWrapper::constructor.New({Napi::External<std::shared_ptr<rtc::DataChannel>>::New(info.Env(), &dataChannel)});
+        PLOG_DEBUG << "Data Channel created. Label: " << label;
         return instance;
     }
     catch (std::exception &ex)
@@ -580,6 +623,7 @@ Napi::Value PeerConnectionWrapper::createDataChannel(const Napi::CallbackInfo &i
 
 void PeerConnectionWrapper::onLocalDescription(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "onLocalDescription() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -598,9 +642,12 @@ void PeerConnectionWrapper::onLocalDescription(const Napi::CallbackInfo &info)
     // Callback
     mOnLocalDescriptionCallback = std::make_unique<ThreadSafeCallback>(info[0].As<Napi::Function>());
 
-    mRtcPeerConnPtr->onLocalDescription([&](rtc::Description sdp) {
+    mRtcPeerConnPtr->onLocalDescription([&](rtc::Description sdp)
+                                        {
+        PLOG_DEBUG << "onLocalDescription cb received from rtc";
         if (mOnLocalDescriptionCallback)
             mOnLocalDescriptionCallback->call([this, sdp = std::move(sdp)](Napi::Env env, std::vector<napi_value> &args) {
+                PLOG_DEBUG << "mOnLocalDescriptionCallback call(1)";
                 // Check the peer connection is not closed
                 if(instances.find(this) == instances.end())
                     throw ThreadSafeCallback::CancelException();
@@ -610,11 +657,13 @@ void PeerConnectionWrapper::onLocalDescription(const Napi::CallbackInfo &info)
                 args = {
                     Napi::String::New(env, std::string(sdp)),
                     Napi::String::New(env, sdp.typeString())};
+                PLOG_DEBUG << "mOnLocalDescriptionCallback call(2)";
             }); });
 }
 
 void PeerConnectionWrapper::onLocalCandidate(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "onLocalCandidate() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -633,9 +682,12 @@ void PeerConnectionWrapper::onLocalCandidate(const Napi::CallbackInfo &info)
     // Callback
     mOnLocalCandidateCallback = std::make_unique<ThreadSafeCallback>(info[0].As<Napi::Function>());
 
-    mRtcPeerConnPtr->onLocalCandidate([&](rtc::Candidate cand) {
+    mRtcPeerConnPtr->onLocalCandidate([&](rtc::Candidate cand)
+                                      {
+        PLOG_DEBUG << "onLocalCandidate cb received from rtc";
         if (mOnLocalCandidateCallback)
             mOnLocalCandidateCallback->call([this, cand = std::move(cand)](Napi::Env env, std::vector<napi_value> &args) {
+                PLOG_DEBUG << "mOnLocalCandidateCallback call(1)";
                  // Check the peer connection is not closed
                 if(instances.find(this) == instances.end())
                     throw ThreadSafeCallback::CancelException();
@@ -645,11 +697,13 @@ void PeerConnectionWrapper::onLocalCandidate(const Napi::CallbackInfo &info)
                 args = {
                     Napi::String::New(env, std::string(cand)),
                     Napi::String::New(env, cand.mid())};
+                PLOG_DEBUG << "mOnLocalCandidateCallback call(2)";
             }); });
 }
 
 void PeerConnectionWrapper::onStateChange(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "onStateChange() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -668,9 +722,12 @@ void PeerConnectionWrapper::onStateChange(const Napi::CallbackInfo &info)
     // Callback
     mOnStateChangeCallback = std::make_unique<ThreadSafeCallback>(info[0].As<Napi::Function>());
 
-    mRtcPeerConnPtr->onStateChange([&](rtc::PeerConnection::State state) {
+    mRtcPeerConnPtr->onStateChange([&](rtc::PeerConnection::State state)
+                                   {
+        PLOG_DEBUG << "onStateChange cb received from rtc";
         if (mOnStateChangeCallback)
             mOnStateChangeCallback->call([this, state](Napi::Env env, std::vector<napi_value> &args) {
+                PLOG_DEBUG << "mOnStateChangeCallback call(1)";
                 if(instances.find(this) == instances.end())
                     throw ThreadSafeCallback::CancelException();
 
@@ -679,11 +736,52 @@ void PeerConnectionWrapper::onStateChange(const Napi::CallbackInfo &info)
                 std::ostringstream stream;
                 stream << state;
                 args = {Napi::String::New(env, stream.str())};
+                PLOG_DEBUG << "mOnStateChangeCallback call(2)";
+            }); });
+}
+
+void PeerConnectionWrapper::onIceStateChange(const Napi::CallbackInfo &info)
+{
+    PLOG_DEBUG << "onIceStateChange() called";
+    Napi::Env env = info.Env();
+    int length = info.Length();
+
+    if (!mRtcPeerConnPtr)
+    {
+        Napi::Error::New(env, "onIceStateChange() called on destroyed peer connection").ThrowAsJavaScriptException();
+        return;
+    }
+
+    if (length < 1 || !info[0].IsFunction())
+    {
+        Napi::TypeError::New(env, "Function expected").ThrowAsJavaScriptException();
+        return;
+    }
+
+    // Callback
+    mOnIceStateChangeCallback = std::make_unique<ThreadSafeCallback>(info[0].As<Napi::Function>());
+
+    mRtcPeerConnPtr->onIceStateChange([&](rtc::PeerConnection::IceState state)
+                                      {
+        PLOG_DEBUG << "onIceStateChange cb received from rtc";
+        if (mOnIceStateChangeCallback)
+            mOnIceStateChangeCallback->call([this, state](Napi::Env env, std::vector<napi_value> &args) {
+                PLOG_DEBUG << "mOnIceStateChangeCallback call(1)";
+                if(instances.find(this) == instances.end())
+                    throw ThreadSafeCallback::CancelException();
+
+                // This will run in main thread and needs to construct the
+                // arguments for the call
+                std::ostringstream stream;
+                stream << state;
+                args = {Napi::String::New(env, stream.str())};
+                PLOG_DEBUG << "mOnIceStateChangeCallback call(2)";
             }); });
 }
 
 void PeerConnectionWrapper::onSignalingStateChange(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "onSignalingStateChange() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -702,9 +800,12 @@ void PeerConnectionWrapper::onSignalingStateChange(const Napi::CallbackInfo &inf
     // Callback
     mOnSignalingStateChangeCallback = std::make_unique<ThreadSafeCallback>(info[0].As<Napi::Function>());
 
-    mRtcPeerConnPtr->onSignalingStateChange([&](rtc::PeerConnection::SignalingState state) {
+    mRtcPeerConnPtr->onSignalingStateChange([&](rtc::PeerConnection::SignalingState state)
+                                            {
+        PLOG_DEBUG << "onSignalingStateChange cb received from rtc";
         if (mOnSignalingStateChangeCallback)
             mOnSignalingStateChangeCallback->call([this, state](Napi::Env env, std::vector<napi_value> &args) {
+                PLOG_DEBUG << "mOnSignalingStateChangeCallback call(1)";
                 // Check the peer connection is not closed
                 if(instances.find(this) == instances.end())
                     throw ThreadSafeCallback::CancelException();
@@ -714,11 +815,13 @@ void PeerConnectionWrapper::onSignalingStateChange(const Napi::CallbackInfo &inf
                 std::ostringstream stream;
                 stream << state;
                 args = {Napi::String::New(env, stream.str())};
+                PLOG_DEBUG << "mOnSignalingStateChangeCallback call(2)";
             }); });
 }
 
 void PeerConnectionWrapper::onGatheringStateChange(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "onGatheringStateChange() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -737,9 +840,12 @@ void PeerConnectionWrapper::onGatheringStateChange(const Napi::CallbackInfo &inf
     // Callback
     mOnGatheringStateChangeCallback = std::make_unique<ThreadSafeCallback>(info[0].As<Napi::Function>());
 
-    mRtcPeerConnPtr->onGatheringStateChange([&](rtc::PeerConnection::GatheringState state) {
+    mRtcPeerConnPtr->onGatheringStateChange([&](rtc::PeerConnection::GatheringState state)
+                                            {
+        PLOG_DEBUG << "onGatheringStateChange cb received from rtc";
         if (mOnGatheringStateChangeCallback)
             mOnGatheringStateChangeCallback->call([this, state](Napi::Env env, std::vector<napi_value> &args) {
+                PLOG_DEBUG << "mOnGatheringStateChangeCallback call(1)";
                 // Check the peer connection is not closed
                 if(instances.find(this) == instances.end())
                     throw ThreadSafeCallback::CancelException();
@@ -749,11 +855,13 @@ void PeerConnectionWrapper::onGatheringStateChange(const Napi::CallbackInfo &inf
                 std::ostringstream stream;
                 stream << state;
                 args = {Napi::String::New(env, stream.str())};
+                PLOG_DEBUG << "mOnGatheringStateChangeCallback call(2)";
             }); });
 }
 
 void PeerConnectionWrapper::onDataChannel(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "onDataChannel() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -774,8 +882,10 @@ void PeerConnectionWrapper::onDataChannel(const Napi::CallbackInfo &info)
 
     mRtcPeerConnPtr->onDataChannel([&](std::shared_ptr<rtc::DataChannel> dc)
                                    {
+        PLOG_DEBUG << "onDataChannel cb received from rtc";
         if (mOnDataChannelCallback)
             mOnDataChannelCallback->call([this, dc](Napi::Env env, std::vector<napi_value> &args) {
+                PLOG_DEBUG << "mOnDataChannelCallback call(1)";
                 // Check the peer connection is not closed
                 if(instances.find(this) == instances.end())
                     throw ThreadSafeCallback::CancelException();
@@ -785,11 +895,13 @@ void PeerConnectionWrapper::onDataChannel(const Napi::CallbackInfo &info)
                 std::shared_ptr<rtc::DataChannel> dataChannel = dc;
                 auto instance = DataChannelWrapper::constructor.New({Napi::External<std::shared_ptr<rtc::DataChannel>>::New(env, &dataChannel)});
                 args = {instance};
+                PLOG_DEBUG << "mOnDataChannelCallback call(2)";
             }); });
 }
 
 Napi::Value PeerConnectionWrapper::bytesSent(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "bytesSent() called";
     Napi::Env env = info.Env();
 
     if (!mRtcPeerConnPtr)
@@ -810,6 +922,7 @@ Napi::Value PeerConnectionWrapper::bytesSent(const Napi::CallbackInfo &info)
 
 Napi::Value PeerConnectionWrapper::bytesReceived(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "bytesReceived() called";
     Napi::Env env = info.Env();
 
     if (!mRtcPeerConnPtr)
@@ -830,6 +943,7 @@ Napi::Value PeerConnectionWrapper::bytesReceived(const Napi::CallbackInfo &info)
 
 Napi::Value PeerConnectionWrapper::rtt(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "rtt() called";
     Napi::Env env = info.Env();
 
     if (!mRtcPeerConnPtr)
@@ -850,6 +964,7 @@ Napi::Value PeerConnectionWrapper::rtt(const Napi::CallbackInfo &info)
 
 Napi::Value PeerConnectionWrapper::getSelectedCandidatePair(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "getSelectedCandidatePair() called";
     Napi::Env env = info.Env();
 
     if (!mRtcPeerConnPtr)
@@ -871,11 +986,17 @@ Napi::Value PeerConnectionWrapper::getSelectedCandidatePair(const Napi::Callback
         localObj.Set("port", local.port().value_or(0));
         localObj.Set("type", candidateTypeToString(local.type()));
         localObj.Set("transportType", candidateTransportTypeToString(local.transportType()));
+        localObj.Set("candidate", local.candidate());
+        localObj.Set("mid", local.mid());
+        localObj.Set("priority", local.priority());
 
         remoteObj.Set("address", remote.address().value_or("?"));
         remoteObj.Set("port", remote.port().value_or(0));
         remoteObj.Set("type", candidateTypeToString(remote.type()));
         remoteObj.Set("transportType", candidateTransportTypeToString(remote.transportType()));
+        remoteObj.Set("candidate", remote.candidate());
+        remoteObj.Set("mid", remote.mid());
+        remoteObj.Set("priority", remote.priority());
 
         retvalue.Set("local", localObj);
         retvalue.Set("remote", remoteObj);
@@ -889,8 +1010,51 @@ Napi::Value PeerConnectionWrapper::getSelectedCandidatePair(const Napi::Callback
     }
 }
 
+Napi::Value PeerConnectionWrapper::maxDataChannelId(const Napi::CallbackInfo &info)
+{
+    PLOG_DEBUG << "maxDataChannelId() called";
+    Napi::Env env = info.Env();
+
+    if (!mRtcPeerConnPtr)
+    {
+        return Napi::Number::New(info.Env(), 0);
+    }
+
+    try
+    {
+        return Napi::Number::New(env, mRtcPeerConnPtr->maxDataChannelId());
+    }
+    catch (std::exception &ex)
+    {
+        Napi::Error::New(env, std::string("libdatachannel error: ") + ex.what()).ThrowAsJavaScriptException();
+        return Napi::Number::New(info.Env(), 0);
+    }
+}
+
+Napi::Value PeerConnectionWrapper::maxMessageSize(const Napi::CallbackInfo &info)
+{
+    PLOG_DEBUG << "maxMessageSize() called";
+    Napi::Env env = info.Env();
+
+    if (!mRtcPeerConnPtr)
+    {
+        return Napi::Number::New(info.Env(), 0);
+    }
+
+    try
+    {
+        return Napi::Number::New(env, mRtcPeerConnPtr->remoteMaxMessageSize());
+    }
+    catch (std::exception &ex)
+    {
+        Napi::Error::New(env, std::string("libdatachannel error: ") + ex.what()).ThrowAsJavaScriptException();
+        return Napi::Number::New(info.Env(), 0);
+    }
+}
+
 std::string PeerConnectionWrapper::candidateTypeToString(const rtc::Candidate::Type &type)
 {
+    PLOG_DEBUG << "candidateTypeToString() called";
     switch (type)
     {
     case rtc::Candidate::Type::Host:
@@ -908,6 +1072,7 @@ std::string PeerConnectionWrapper::candidateTypeToString(const rtc::Candidate::T
 
 std::string PeerConnectionWrapper::candidateTransportTypeToString(const rtc::Candidate::TransportType &transportType)
 {
+    PLOG_DEBUG << "candidateTransportTypeToString() called";
     switch (transportType)
     {
     case rtc::Candidate::TransportType::Udp:
@@ -927,6 +1092,7 @@ std::string PeerConnectionWrapper::candidateTransportTypeToString(const rtc::Can
 
 Napi::Value PeerConnectionWrapper::addTrack(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "addTrack() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -973,6 +1139,7 @@ Napi::Value PeerConnectionWrapper::addTrack(const Napi::CallbackInfo &info)
 
 void PeerConnectionWrapper::onTrack(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "onTrack() called";
     Napi::Env env = info.Env();
     int length = info.Length();
 
@@ -991,7 +1158,8 @@ void PeerConnectionWrapper::onTrack(const Napi::CallbackInfo &info)
     // Callback
     mOnTrackCallback = std::make_unique<ThreadSafeCallback>(info[0].As<Napi::Function>());
 
-    mRtcPeerConnPtr->onTrack([&](std::shared_ptr<rtc::Track> track) {
+    mRtcPeerConnPtr->onTrack([&](std::shared_ptr<rtc::Track> track)
+                             {
         if (mOnTrackCallback)
             mOnTrackCallback->call([this, track](Napi::Env env, std::vector<napi_value> &args) {
                 // Check the peer connection is not closed
@@ -1008,20 +1176,32 @@ void PeerConnectionWrapper::onTrack(const Napi::CallbackInfo &info)
 
 Napi::Value PeerConnectionWrapper::hasMedia(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "hasMedia() called";
     Napi::Env env = info.Env();
     return Napi::Boolean::New(env, mRtcPeerConnPtr ? mRtcPeerConnPtr->hasMedia() : false);
 }
 
 Napi::Value PeerConnectionWrapper::state(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "state() called";
     Napi::Env env = info.Env();
     std::ostringstream stream;
     stream << (mRtcPeerConnPtr ? mRtcPeerConnPtr->state() : rtc::PeerConnection::State::Closed);
     return Napi::String::New(env, stream.str());
 }
 
+Napi::Value PeerConnectionWrapper::iceState(const Napi::CallbackInfo &info)
+{
+    PLOG_DEBUG << "iceState() called";
+    Napi::Env env = info.Env();
+    std::ostringstream stream;
+    stream << (mRtcPeerConnPtr ? mRtcPeerConnPtr->iceState() : rtc::PeerConnection::IceState::Closed);
+    return Napi::String::New(env, stream.str());
+}
+
 Napi::Value PeerConnectionWrapper::signalingState(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "signalingState() called";
     Napi::Env env = info.Env();
     std::ostringstream stream;
     stream << (mRtcPeerConnPtr ? mRtcPeerConnPtr->signalingState() : rtc::PeerConnection::SignalingState::Stable);
@@ -1030,6 +1210,7 @@ Napi::Value PeerConnectionWrapper::signalingState(const Napi::CallbackInfo &info
 
 Napi::Value PeerConnectionWrapper::gatheringState(const Napi::CallbackInfo &info)
 {
+    PLOG_DEBUG << "gatheringState() called";
     Napi::Env env = info.Env();
     std::ostringstream stream;
     stream << (mRtcPeerConnPtr ? mRtcPeerConnPtr->gatheringState() : rtc::PeerConnection::GatheringState::Complete);

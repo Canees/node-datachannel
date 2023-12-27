@@ -98,6 +98,9 @@ export interface SelectedCandidateInfo {
     port: number;
     type: string;
     transportType: string;
+    candidate: string;
+    mid: string;
+    priority: number;
 }
 
 // Must be same as rtc enum class Direction
@@ -192,7 +195,7 @@ export class DataChannel {
     getId(): number;
     getProtocol(): string;
     sendMessage(msg: string): boolean;
-    sendMessageBinary(buffer: Buffer): boolean;
+    sendMessageBinary(buffer: Uint8Array): boolean;
     isOpen(): boolean;
     bufferedAmount(): number;
     maxMessageSize(): number;
@@ -211,16 +214,19 @@ export class PeerConnection {
     setLocalDescription(type?: DescriptionType): void;
     setRemoteDescription(sdp: string, type: DescriptionType): void;
     localDescription(): { type: string; sdp: string } | null;
+    remoteDescription(): { type: string; sdp: string } | null;
     addRemoteCandidate(candidate: string, mid: string): void;
     createDataChannel(label: string, config?: DataChannelInitConfig): DataChannel;
     addTrack(media: Video | Audio): Track;
     hasMedia(): boolean;
-    state(): string;
-    signalingState(): string;
-    gatheringState(): string;
+    state(): RTCPeerConnectionState;
+    iceState(): RTCIceConnectionState;
+    signalingState(): RTCSignalingState;
+    gatheringState(): RTCIceGatheringState;
     onLocalDescription(cb: (sdp: string, type: DescriptionType) => void): void;
     onLocalCandidate(cb: (candidate: string, mid: string) => void): void;
     onStateChange(cb: (state: string) => void): void;
+    onIceStateChange(cb: (state: string) => void): void;
     onSignalingStateChange(cb: (state: string) => void): void;
     onGatheringStateChange(cb: (state: string) => void): void;
     onDataChannel(cb: (dc: DataChannel) => void): void;
@@ -229,6 +235,8 @@ export class PeerConnection {
     bytesReceived(): number;
     rtt(): number;
     getSelectedCandidatePair(): { local: SelectedCandidateInfo; remote: SelectedCandidateInfo } | null;
+    maxDataChannelId(): number;
+    maxMessageSize(): number;
 }
 
 export class DataChannelStream extends stream.Duplex {
