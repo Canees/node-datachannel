@@ -1,5 +1,7 @@
-import { expect } from '@jest/globals';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { expect, jest } from '@jest/globals';
 import { RTCPeerConnection, RTCDataChannel } from '../../src/polyfill/index';
+import { PeerConnection } from '../../src/lib/index';
 
 describe('polyfill', () => {
     // Default is 5000 ms but we need more
@@ -111,13 +113,13 @@ describe('polyfill', () => {
 				expect(p2MessageMock.mock.calls.length).toBe(3);
 
 				// Analyze and compare received messages
-				expect(analyzeData(0, p1MessageMock.mock.calls[0][0])).toEqual(true);
-				expect(analyzeData(1, p1MessageMock.mock.calls[1][0])).toEqual(true);
-				expect(analyzeData(2, p1MessageMock.mock.calls[2][0])).toEqual(true);
+				expect(analyzeData(0, p1MessageMock.mock.calls[0][0] as any)).toEqual(true);
+				expect(analyzeData(1, p1MessageMock.mock.calls[1][0] as any)).toEqual(true);
+				expect(analyzeData(2, p1MessageMock.mock.calls[2][0] as any)).toEqual(true);
 
-				expect(analyzeData(0, p2MessageMock.mock.calls[0][0])).toEqual(true);
-				expect(analyzeData(1, p2MessageMock.mock.calls[1][0])).toEqual(true);
-				expect(analyzeData(2, p2MessageMock.mock.calls[2][0])).toEqual(true);
+				expect(analyzeData(0, p2MessageMock.mock.calls[0][0] as any)).toEqual(true);
+				expect(analyzeData(1, p2MessageMock.mock.calls[1][0] as any)).toEqual(true);
+				expect(analyzeData(2, p2MessageMock.mock.calls[2][0] as any)).toEqual(true);
 
 				done();
 			}
@@ -212,4 +214,26 @@ describe('polyfill', () => {
 			};
 		});
 	});
+
+	test('it should accept a preconfigured PeerConnection', () => {
+		const peerConnection = new PeerConnection('Peer', {
+				iceServers: [],
+		});
+
+		// have to override write-only method in order to spy on it
+		const originalFunc = peerConnection.state.bind(peerConnection);
+		Object.defineProperty(peerConnection, 'state', {
+				value: originalFunc,
+				writable: true,
+				enumerable: true,
+		});
+
+		const spy = jest.spyOn(peerConnection, 'state');
+		const rtcPeerConnection = new RTCPeerConnection({
+				peerConnection,
+		});
+		const connectionState = rtcPeerConnection.connectionState;
+		expect(spy).toHaveBeenCalled();
+		expect(connectionState).toEqual(originalFunc());
+});
 });

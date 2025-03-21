@@ -174,15 +174,27 @@ export default class RTCDataChannel extends EventTarget implements globalThis.RT
             this.#dataChannel.sendMessage(data);
         } else if (data instanceof Blob) {
             data.arrayBuffer().then((ab) => {
-                this.#dataChannel.sendMessageBinary(new Uint8Array(ab));
+                if (process?.versions?.bun) {
+                    this.#dataChannel.sendMessageBinary(Buffer.from(ab));
+                } else {
+                    this.#dataChannel.sendMessageBinary(new Uint8Array(ab));
+                }
             });
+        } else if (data instanceof Uint8Array) {
+            this.#dataChannel.sendMessageBinary(data);
         } else {
-            this.#dataChannel.sendMessageBinary(new Uint8Array(data));
+            if (process?.versions?.bun) {
+                this.#dataChannel.sendMessageBinary(Buffer.from(data));
+            } else {
+                this.#dataChannel.sendMessageBinary(new Uint8Array(data));
+            }
         }
     }
 
     close(): void {
         this.#closeRequested = true;
-        this.#dataChannel.close();
+        setImmediate(() => {
+            this.#dataChannel.close();
+        });
     }
 }
